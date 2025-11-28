@@ -119,7 +119,7 @@ impl<T: HttpTransport, A: AuthProvider> GeminiClient<T, A> {
 
         // Parse the response and convert to events
         let gemini_response: GeminiResponse = serde_json::from_slice(&response.body)
-            .map_err(|e| ApiError::Stream(format!("Failed to parse Gemini response: {}", e)))?;
+            .map_err(|e| ApiError::Stream(format!("Failed to parse Gemini response: {e}")))?;
 
         // Create channel for events
         let (tx, rx_event) = mpsc::channel(32);
@@ -172,6 +172,8 @@ struct GeminiPart {
 struct GeminiFunctionCall {
     name: String,
     args: Option<Value>,
+    /// Thought signature for Gemini thinking mode
+    thought_signature: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -190,52 +192,51 @@ async fn emit_gemini_events(
 
     if let Some(candidates) = response.candidates {
         for candidate in candidates {
-            if let Some(content) = candidate.content {
-                if let Some(parts) = content.parts {
-                    let mut text_parts = Vec::new();
+            if let Some(content) = candidate.content
+                && let Some(parts) = content.parts
+            {
+                let mut text_parts = Vec::new();
 
-                    for part in parts {
-                        // Collect text parts
-                        if let Some(text) = part.text {
-                            if !text.is_empty() {
-                                text_parts.push(text.clone());
-                                // Emit text delta
-                                let _ = tx
-                                    .send(Ok(ResponseEvent::OutputTextDelta(text)))
-                                    .await;
-                            }
-                        }
-
-                        // Handle function calls
-                        if let Some(func_call) = part.function_call {
-                            function_call_counter += 1;
-                            let call_id = format!("gemini_call_{}", function_call_counter);
-
-                            let arguments = func_call
-                                .args
-                                .map(|a| serde_json::to_string(&a).unwrap_or_else(|_| "{}".to_string()))
-                                .unwrap_or_else(|| "{}".to_string());
-
-                            let item = ResponseItem::FunctionCall {
-                                id: None,
-                                name: func_call.name,
-                                arguments,
-                                call_id,
-                            };
-                            let _ = tx.send(Ok(ResponseEvent::OutputItemDone(item))).await;
-                        }
+                for part in parts {
+                    // Collect text parts
+                    if let Some(text) = part.text
+                        && !text.is_empty()
+                    {
+                        text_parts.push(text.clone());
+                        // Emit text delta
+                        let _ = tx.send(Ok(ResponseEvent::OutputTextDelta(text))).await;
                     }
 
-                    // Emit message if we had text
-                    if !text_parts.is_empty() {
-                        let full_text = text_parts.join("");
-                        let message = ResponseItem::Message {
+                    // Handle function calls
+                    if let Some(func_call) = part.function_call {
+                        function_call_counter += 1;
+                        let call_id = format!("gemini_call_{function_call_counter}");
+
+                        let arguments = func_call
+                            .args
+                            .map(|a| serde_json::to_string(&a).unwrap_or_else(|_| "{}".to_string()))
+                            .unwrap_or_else(|| "{}".to_string());
+
+                        let item = ResponseItem::FunctionCall {
                             id: None,
-                            role: "assistant".to_string(),
-                            content: vec![ContentItem::OutputText { text: full_text }],
+                            name: func_call.name,
+                            arguments,
+                            call_id,
+                            thought_signature: func_call.thought_signature,
                         };
-                        let _ = tx.send(Ok(ResponseEvent::OutputItemDone(message))).await;
+                        let _ = tx.send(Ok(ResponseEvent::OutputItemDone(item))).await;
                     }
+                }
+
+                // Emit message if we had text
+                if !text_parts.is_empty() {
+                    let full_text = text_parts.join("");
+                    let message = ResponseItem::Message {
+                        id: None,
+                        role: "assistant".to_string(),
+                        content: vec![ContentItem::OutputText { text: full_text }],
+                    };
+                    let _ = tx.send(Ok(ResponseEvent::OutputItemDone(message))).await;
                 }
             }
 

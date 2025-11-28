@@ -43,6 +43,8 @@ pub async fn process_chat_sse<S>(
     struct ToolCallState {
         name: Option<String>,
         arguments: String,
+        /// Thought signature for Gemini thinking mode - must be echoed back
+        thought_signature: Option<String>,
     }
 
     let mut tool_calls: HashMap<String, ToolCallState> = HashMap::new();
@@ -169,6 +171,24 @@ pub async fn process_chat_sse<S>(
                                 call_state.arguments.push_str(arguments);
                             }
                         }
+
+                        // Capture thought_signature for Gemini thinking mode.
+                        // Gemini 3 Pro exposes this under:
+                        //   • tool_call.thought_signature (legacy)
+                        //   • tool_call.extra_content.google.thought_signature (current)
+                        if let Some(sig) = tool_call
+                            .get("thought_signature")
+                            .and_then(|s| s.as_str())
+                            .or_else(|| {
+                                tool_call
+                                    .get("extra_content")
+                                    .and_then(|extra| extra.get("google"))
+                                    .and_then(|google| google.get("thought_signature"))
+                                    .and_then(|s| s.as_str())
+                            })
+                        {
+                            call_state.thought_signature = Some(sig.to_string());
+                        }
                     }
                 }
             }
@@ -229,6 +249,7 @@ pub async fn process_chat_sse<S>(
                         name: state.name.unwrap_or_default(),
                         arguments: state.arguments,
                         call_id: call_id.clone(),
+                        thought_signature: state.thought_signature,
                     };
                     let _ = tx_event.send(Ok(ResponseEvent::OutputItemDone(item))).await;
                 }

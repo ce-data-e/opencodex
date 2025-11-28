@@ -68,10 +68,7 @@ impl<'a> GeminiRequestBuilder<'a> {
 
         // First pass: collect function call names by call_id
         for item in self.input {
-            if let ResponseItem::FunctionCall {
-                name, call_id, ..
-            } = item
-            {
+            if let ResponseItem::FunctionCall { name, call_id, .. } = item {
                 function_call_names.insert(call_id.clone(), name.clone());
             }
         }
@@ -90,18 +87,27 @@ impl<'a> GeminiRequestBuilder<'a> {
                     }
                 }
                 ResponseItem::FunctionCall {
-                    name, arguments, ..
+                    name,
+                    arguments,
+                    thought_signature,
+                    ..
                 } => {
                     // Parse arguments as JSON
                     let args: Value = serde_json::from_str(arguments).unwrap_or(json!({}));
 
+                    let mut function_call = json!({
+                        "name": name,
+                        "args": args
+                    });
+                    // Include thought_signature for Gemini thinking mode
+                    if let Some(sig) = thought_signature {
+                        function_call["thoughtSignature"] = json!(sig);
+                    }
+
                     contents.push(json!({
                         "role": "model",
                         "parts": [{
-                            "functionCall": {
-                                "name": name,
-                                "args": args
-                            }
+                            "functionCall": function_call
                         }]
                     }));
                 }
@@ -183,15 +189,13 @@ impl<'a> GeminiRequestBuilder<'a> {
                 .iter()
                 .filter_map(|tool| {
                     // Convert from OpenAI tool format to Gemini format
-                    if let Some(func) = tool.get("function") {
-                        Some(json!({
+                    tool.get("function").map(|func| {
+                        json!({
                             "name": func.get("name"),
                             "description": func.get("description"),
                             "parameters": func.get("parameters")
-                        }))
-                    } else {
-                        None
-                    }
+                        })
+                    })
                 })
                 .collect();
 
@@ -243,10 +247,7 @@ fn content_items_to_parts(content: &[ContentItem]) -> Vec<Value> {
                         let metadata = &image_url[5..comma_idx]; // Skip "data:"
                         let data = &image_url[comma_idx + 1..];
 
-                        let mime_type = metadata
-                            .split(';')
-                            .next()
-                            .unwrap_or("image/png");
+                        let mime_type = metadata.split(';').next().unwrap_or("image/png");
 
                         Some(json!({
                             "inlineData": {
@@ -328,10 +329,9 @@ mod tests {
             }],
         }];
 
-        let request =
-            GeminiRequestBuilder::new("gemini-pro", "Be concise.", &input, &[])
-                .build(&provider())
-                .expect("request");
+        let request = GeminiRequestBuilder::new("gemini-pro", "Be concise.", &input, &[])
+            .build(&provider())
+            .expect("request");
 
         let system = request.body.get("systemInstruction").unwrap();
         assert_eq!(system["parts"][0]["text"], "Be concise.");
@@ -362,6 +362,7 @@ mod tests {
             name: "get_weather".to_string(),
             arguments: r#"{"city": "London"}"#.to_string(),
             call_id: "call_123".to_string(),
+            thought_signature: None,
         }];
 
         let request = GeminiRequestBuilder::new("gemini-pro", "", &input, &[])
@@ -370,7 +371,39 @@ mod tests {
 
         let contents = request.body.get("contents").unwrap().as_array().unwrap();
         assert_eq!(contents[0]["role"], "model");
-        assert_eq!(contents[0]["parts"][0]["functionCall"]["name"], "get_weather");
-        assert_eq!(contents[0]["parts"][0]["functionCall"]["args"]["city"], "London");
+        assert_eq!(
+            contents[0]["parts"][0]["functionCall"]["name"],
+            "get_weather"
+        );
+        assert_eq!(
+            contents[0]["parts"][0]["functionCall"]["args"]["city"],
+            "London"
+        );
+    }
+
+    #[test]
+    fn converts_function_call_with_thought_signature() {
+        let input = vec![ResponseItem::FunctionCall {
+            id: None,
+            name: "get_weather".to_string(),
+            arguments: r#"{"city": "London"}"#.to_string(),
+            call_id: "call_123".to_string(),
+            thought_signature: Some("sig_abc123".to_string()),
+        }];
+
+        let request = GeminiRequestBuilder::new("gemini-pro", "", &input, &[])
+            .build(&provider())
+            .expect("request");
+
+        let contents = request.body.get("contents").unwrap().as_array().unwrap();
+        assert_eq!(contents[0]["role"], "model");
+        assert_eq!(
+            contents[0]["parts"][0]["functionCall"]["name"],
+            "get_weather"
+        );
+        assert_eq!(
+            contents[0]["parts"][0]["functionCall"]["thoughtSignature"],
+            "sig_abc123"
+        );
     }
 }

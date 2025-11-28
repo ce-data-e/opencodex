@@ -6,11 +6,11 @@
 use crate::common::ResponseEvent;
 use crate::common::ResponseStream;
 use crate::error::ApiError;
-use codex_protocol::protocol::TokenUsage;
 use crate::telemetry::SseTelemetry;
 use codex_client::StreamResponse;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::TokenUsage;
 use eventsource_stream::Eventsource;
 use futures::Stream;
 use futures::StreamExt;
@@ -67,6 +67,9 @@ struct GeminiPart {
 struct GeminiFunctionCall {
     name: String,
     args: Option<serde_json::Value>,
+    /// Thought signature for Gemini thinking mode
+    #[serde(rename = "thoughtSignature")]
+    thought_signature: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -166,47 +169,45 @@ pub async fn process_gemini_sse<S>(
 
         for candidate in candidates {
             // Process content parts FIRST (before checking finish reason)
-            if let Some(content) = &candidate.content {
-                if let Some(parts) = &content.parts {
-                    for part in parts {
-                        // Handle text parts
-                        if let Some(text) = &part.text {
-                            if !text.is_empty() {
-                                append_assistant_text(&tx_event, &mut assistant_item, text.clone())
-                                    .await;
-                            }
+            if let Some(content) = &candidate.content
+                && let Some(parts) = &content.parts
+            {
+                for part in parts {
+                    // Handle text parts
+                    if let Some(text) = &part.text
+                        && !text.is_empty()
+                    {
+                        append_assistant_text(&tx_event, &mut assistant_item, text.clone()).await;
+                    }
+
+                    // Handle function calls
+                    if let Some(func_call) = &part.function_call {
+                        // First, emit any pending assistant message
+                        if let Some(assistant) = assistant_item.take() {
+                            let _ = tx_event
+                                .send(Ok(ResponseEvent::OutputItemDone(assistant)))
+                                .await;
                         }
 
-                        // Handle function calls
-                        if let Some(func_call) = &part.function_call {
-                            // First, emit any pending assistant message
-                            if let Some(assistant) = assistant_item.take() {
-                                let _ = tx_event
-                                    .send(Ok(ResponseEvent::OutputItemDone(assistant)))
-                                    .await;
-                            }
+                        // Generate a unique call_id
+                        function_call_counter += 1;
+                        let call_id = format!("gemini_call_{function_call_counter}");
 
-                            // Generate a unique call_id
-                            function_call_counter += 1;
-                            let call_id = format!("gemini_call_{}", function_call_counter);
+                        // Serialize args to string
+                        let arguments = func_call
+                            .args
+                            .as_ref()
+                            .map(|a| serde_json::to_string(a).unwrap_or_else(|_| "{}".to_string()))
+                            .unwrap_or_else(|| "{}".to_string());
 
-                            // Serialize args to string
-                            let arguments = func_call
-                                .args
-                                .as_ref()
-                                .map(|a| {
-                                    serde_json::to_string(a).unwrap_or_else(|_| "{}".to_string())
-                                })
-                                .unwrap_or_else(|| "{}".to_string());
-
-                            let item = ResponseItem::FunctionCall {
-                                id: None,
-                                name: func_call.name.clone(),
-                                arguments,
-                                call_id,
-                            };
-                            let _ = tx_event.send(Ok(ResponseEvent::OutputItemDone(item))).await;
-                        }
+                        let item = ResponseItem::FunctionCall {
+                            id: None,
+                            name: func_call.name.clone(),
+                            arguments,
+                            call_id,
+                            thought_signature: func_call.thought_signature.clone(),
+                        };
+                        let _ = tx_event.send(Ok(ResponseEvent::OutputItemDone(item))).await;
                     }
                 }
             }
