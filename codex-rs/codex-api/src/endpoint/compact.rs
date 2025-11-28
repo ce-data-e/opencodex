@@ -39,7 +39,7 @@ impl<T: HttpTransport, A: AuthProvider> CompactClient<T, A> {
     fn path(&self) -> Result<&'static str, ApiError> {
         match self.provider.wire {
             WireApi::Compact | WireApi::Responses => Ok("responses/compact"),
-            WireApi::Chat => Err(ApiError::Stream(
+            WireApi::Chat | WireApi::Gemini => Err(ApiError::Stream(
                 "compact endpoint requires responses wire api".to_string(),
             )),
         }
@@ -127,6 +127,7 @@ mod tests {
             base_url: "https://example.com/v1".to_string(),
             query_params: None,
             wire,
+            model_name: None,
             headers: HeaderMap::new(),
             retry: RetryConfig {
                 max_attempts: 1,

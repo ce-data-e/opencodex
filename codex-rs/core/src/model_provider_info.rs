@@ -42,6 +42,9 @@ pub enum WireApi {
     /// Regular Chat Completions compatible with `/v1/chat/completions`.
     #[default]
     Chat,
+
+    /// Google Gemini API with model-in-path URL pattern.
+    Gemini,
 }
 
 /// Serializable representation of a provider definition.
@@ -66,6 +69,10 @@ pub struct ModelProviderInfo {
     /// Which wire protocol this provider expects.
     #[serde(default)]
     pub wire_api: WireApi,
+
+    /// Model name for providers that require the model in the URL path (e.g., Gemini).
+    /// For Gemini, this is used to construct URLs like `/models/{model_name}:streamGenerateContent`.
+    pub model_name: Option<String>,
 
     /// Optional query parameters to append to the base URL.
     pub query_params: Option<HashMap<String, String>>,
@@ -155,7 +162,9 @@ impl ModelProviderInfo {
             wire: match self.wire_api {
                 WireApi::Responses => ApiWireApi::Responses,
                 WireApi::Chat => ApiWireApi::Chat,
+                WireApi::Gemini => ApiWireApi::Gemini,
             },
+            model_name: self.model_name.clone(),
             headers,
             retry,
             stream_idle_timeout: self.stream_idle_timeout(),
@@ -241,6 +250,7 @@ pub fn built_in_model_providers() -> HashMap<String, ModelProviderInfo> {
                 env_key_instructions: None,
                 experimental_bearer_token: None,
                 wire_api: WireApi::Responses,
+                model_name: None,
                 query_params: None,
                 http_headers: Some(
                     [("version".to_string(), env!("CARGO_PKG_VERSION").to_string())]
@@ -307,6 +317,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         env_key_instructions: None,
         experimental_bearer_token: None,
         wire_api,
+        model_name: None,
         query_params: None,
         http_headers: None,
         env_http_headers: None,
@@ -335,6 +346,7 @@ base_url = "http://localhost:11434/v1"
             env_key_instructions: None,
             experimental_bearer_token: None,
             wire_api: WireApi::Chat,
+            model_name: None,
             query_params: None,
             http_headers: None,
             env_http_headers: None,
@@ -363,6 +375,7 @@ query_params = { api-version = "2025-04-01-preview" }
             env_key_instructions: None,
             experimental_bearer_token: None,
             wire_api: WireApi::Chat,
+            model_name: None,
             query_params: Some(maplit::hashmap! {
                 "api-version".to_string() => "2025-04-01-preview".to_string(),
             }),
@@ -394,6 +407,7 @@ env_http_headers = { "X-Example-Env-Header" = "EXAMPLE_ENV_VAR" }
             env_key_instructions: None,
             experimental_bearer_token: None,
             wire_api: WireApi::Chat,
+            model_name: None,
             query_params: None,
             http_headers: Some(maplit::hashmap! {
                 "X-Example-Header".to_string() => "example-value".to_string(),
@@ -429,6 +443,7 @@ env_http_headers = { "X-Example-Env-Header" = "EXAMPLE_ENV_VAR" }
                 env_key_instructions: None,
                 experimental_bearer_token: None,
                 wire_api: WireApi::Responses,
+                model_name: None,
                 query_params: None,
                 http_headers: None,
                 env_http_headers: None,
@@ -451,6 +466,7 @@ env_http_headers = { "X-Example-Env-Header" = "EXAMPLE_ENV_VAR" }
             env_key_instructions: None,
             experimental_bearer_token: None,
             wire_api: WireApi::Responses,
+            model_name: None,
             query_params: None,
             http_headers: None,
             env_http_headers: None,
@@ -475,6 +491,7 @@ env_http_headers = { "X-Example-Env-Header" = "EXAMPLE_ENV_VAR" }
                 env_key_instructions: None,
                 experimental_bearer_token: None,
                 wire_api: WireApi::Responses,
+                model_name: None,
                 query_params: None,
                 http_headers: None,
                 env_http_headers: None,

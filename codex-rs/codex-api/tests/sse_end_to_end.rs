@@ -66,6 +66,7 @@ fn provider(name: &str, wire: WireApi) -> Provider {
         base_url: "https://example.com/v1".to_string(),
         query_params: None,
         wire,
+        model_name: None,
         headers: HeaderMap::new(),
         retry: codex_api::provider::RetryConfig {
             max_attempts: 1,
