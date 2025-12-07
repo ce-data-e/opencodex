@@ -238,6 +238,7 @@ impl ShellHandler {
             turn.approval_policy,
             &turn.sandbox_policy,
             SandboxPermissions::from(exec_params.with_escalated_permissions.unwrap_or(false)),
+            &turn.security_policy,
         )
         .await;
 

@@ -6,6 +6,7 @@ use std::sync::atomic::AtomicU64;
 
 use crate::AuthManager;
 use crate::SandboxState;
+use crate::config::types::SecurityPolicy;
 use crate::client_common::REVIEW_PROMPT;
 use crate::compact;
 use crate::compact::run_inline_auto_compact_task;
@@ -294,6 +295,7 @@ pub(crate) struct TurnContext {
     pub(crate) approval_policy: AskForApproval,
     pub(crate) sandbox_policy: SandboxPolicy,
     pub(crate) shell_environment_policy: ShellEnvironmentPolicy,
+    pub(crate) security_policy: SecurityPolicy,
     pub(crate) tools_config: ToolsConfig,
     pub(crate) final_output_json_schema: Option<Value>,
     pub(crate) codex_linux_sandbox_exe: Option<PathBuf>,
@@ -458,6 +460,7 @@ impl Session {
             approval_policy: session_configuration.approval_policy,
             sandbox_policy: session_configuration.sandbox_policy.clone(),
             shell_environment_policy: per_turn_config.shell_environment_policy.clone(),
+            security_policy: per_turn_config.security_policy.clone(),
             tools_config,
             final_output_json_schema: None,
             codex_linux_sandbox_exe: per_turn_config.codex_linux_sandbox_exe.clone(),
@@ -1981,6 +1984,7 @@ async fn spawn_review_thread(
         approval_policy: parent_turn_context.approval_policy,
         sandbox_policy: parent_turn_context.sandbox_policy.clone(),
         shell_environment_policy: parent_turn_context.shell_environment_policy.clone(),
+        security_policy: parent_turn_context.security_policy.clone(),
         cwd: parent_turn_context.cwd.clone(),
         final_output_json_schema: None,
         codex_linux_sandbox_exe: parent_turn_context.codex_linux_sandbox_exe.clone(),

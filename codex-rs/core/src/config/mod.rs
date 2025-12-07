@@ -9,6 +9,8 @@ use crate::config::types::OtelConfigToml;
 use crate::config::types::OtelExporterKind;
 use crate::config::types::ReasoningSummaryFormat;
 use crate::config::types::SandboxWorkspaceWrite;
+use crate::config::types::SecurityPolicy;
+use crate::config::types::SecurityPolicyToml;
 use crate::config::types::ShellEnvironmentPolicy;
 use crate::config::types::ShellEnvironmentPolicyToml;
 use crate::config::types::Tui;
@@ -105,6 +107,9 @@ pub struct Config {
     pub forced_auto_mode_downgraded_on_windows: bool,
 
     pub shell_environment_policy: ShellEnvironmentPolicy,
+
+    /// Security policy for deny list checks that apply even in YOLO mode.
+    pub security_policy: SecurityPolicy,
 
     /// When `true`, `AgentReasoning` events emitted by the backend will be
     /// suppressed from the frontend output. This can reduce visual noise when
@@ -586,6 +591,10 @@ pub struct ConfigToml {
 
     #[serde(default)]
     pub shell_environment_policy: ShellEnvironmentPolicyToml,
+
+    /// Security policy for deny list checks.
+    #[serde(default)]
+    pub security: Option<SecurityPolicyToml>,
 
     /// Sandbox mode to use.
     pub sandbox_mode: Option<SandboxMode>,
@@ -1084,6 +1093,7 @@ impl Config {
             .clone();
 
         let shell_environment_policy = cfg.shell_environment_policy.into();
+        let security_policy = cfg.security.unwrap_or_default().into();
 
         let history = cfg.history.unwrap_or_default();
 
@@ -1178,6 +1188,7 @@ impl Config {
             did_user_set_custom_approval_policy_or_sandbox_mode,
             forced_auto_mode_downgraded_on_windows,
             shell_environment_policy,
+            security_policy,
             notify: cfg.notify,
             user_instructions,
             base_instructions,
@@ -2960,6 +2971,7 @@ model_verbosity = "high"
                 did_user_set_custom_approval_policy_or_sandbox_mode: true,
                 forced_auto_mode_downgraded_on_windows: false,
                 shell_environment_policy: ShellEnvironmentPolicy::default(),
+                security_policy: SecurityPolicy::default(),
                 user_instructions: None,
                 notify: None,
                 cwd: fixture.cwd(),
@@ -3035,6 +3047,7 @@ model_verbosity = "high"
             did_user_set_custom_approval_policy_or_sandbox_mode: true,
             forced_auto_mode_downgraded_on_windows: false,
             shell_environment_policy: ShellEnvironmentPolicy::default(),
+            security_policy: SecurityPolicy::default(),
             user_instructions: None,
             notify: None,
             cwd: fixture.cwd(),
@@ -3125,6 +3138,7 @@ model_verbosity = "high"
             did_user_set_custom_approval_policy_or_sandbox_mode: true,
             forced_auto_mode_downgraded_on_windows: false,
             shell_environment_policy: ShellEnvironmentPolicy::default(),
+            security_policy: SecurityPolicy::default(),
             user_instructions: None,
             notify: None,
             cwd: fixture.cwd(),
@@ -3201,6 +3215,7 @@ model_verbosity = "high"
             did_user_set_custom_approval_policy_or_sandbox_mode: true,
             forced_auto_mode_downgraded_on_windows: false,
             shell_environment_policy: ShellEnvironmentPolicy::default(),
+            security_policy: SecurityPolicy::default(),
             user_instructions: None,
             notify: None,
             cwd: fixture.cwd(),

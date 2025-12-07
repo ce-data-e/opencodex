@@ -21,15 +21,20 @@ use tokio::sync::RwLock;
 use tokio::task::spawn_blocking;
 
 use crate::bash::parse_shell_lc_plain_commands;
+use crate::config::types::SecurityPolicy;
 use crate::features::Feature;
 use crate::features::Features;
 use crate::sandboxing::SandboxPermissions;
+use crate::security_deny_list::DenyListCheckResult;
+use crate::security_deny_list::check_command_against_deny_list;
 use crate::tools::sandboxing::ExecApprovalRequirement;
 
 const FORBIDDEN_REASON: &str = "execpolicy forbids this command";
 const PROMPT_CONFLICT_REASON: &str =
     "execpolicy requires approval for this command, but AskForApproval is set to Never";
 const PROMPT_REASON: &str = "execpolicy requires approval for this command";
+const SECURITY_FORBIDDEN_REASON: &str = "command matches security forbidden pattern";
+const SECURITY_DENY_REASON: &str = "command matches security deny pattern (requires approval)";
 const POLICY_DIR_NAME: &str = "policy";
 const POLICY_EXTENSION: &str = "codexpolicy";
 const DEFAULT_POLICY_FILE: &str = "default.codexpolicy";
@@ -204,7 +209,28 @@ pub(crate) async fn create_exec_approval_requirement_for_command(
     approval_policy: AskForApproval,
     sandbox_policy: &SandboxPolicy,
     sandbox_permissions: SandboxPermissions,
+    security_policy: &SecurityPolicy,
 ) -> ExecApprovalRequirement {
+    // Check security deny list FIRST, regardless of approval_policy.
+    // This allows blocking or forcing approval even in YOLO mode.
+    match check_command_against_deny_list(command, security_policy) {
+        DenyListCheckResult::Forbidden { matched_pattern } => {
+            return ExecApprovalRequirement::Forbidden {
+                reason: format!("{SECURITY_FORBIDDEN_REASON}: {matched_pattern}"),
+            };
+        }
+        DenyListCheckResult::RequiresApproval { matched_pattern } => {
+            // Force approval even if approval_policy is Never (YOLO mode)
+            return ExecApprovalRequirement::NeedsApproval {
+                reason: Some(format!("{SECURITY_DENY_REASON}: {matched_pattern}")),
+                proposed_execpolicy_amendment: None,
+            };
+        }
+        DenyListCheckResult::Allowed => {
+            // Continue with normal exec policy evaluation
+        }
+    }
+
     let commands = parse_shell_lc_plain_commands(command).unwrap_or_else(|| vec![command.to_vec()]);
     let heuristics_fallback = |cmd: &[String]| {
         if requires_initial_appoval(approval_policy, sandbox_policy, cmd, sandbox_permissions) {
@@ -416,6 +442,7 @@ prefix_rule(pattern=["rm"], decision="forbidden")
             AskForApproval::OnRequest,
             &SandboxPolicy::DangerFullAccess,
             SandboxPermissions::UseDefault,
+            &SecurityPolicy::default(),
         )
         .await;
 
@@ -444,6 +471,7 @@ prefix_rule(pattern=["rm"], decision="forbidden")
             AskForApproval::OnRequest,
             &SandboxPolicy::DangerFullAccess,
             SandboxPermissions::UseDefault,
+            &SecurityPolicy::default(),
         )
         .await;
 
@@ -473,6 +501,7 @@ prefix_rule(pattern=["rm"], decision="forbidden")
             AskForApproval::Never,
             &SandboxPolicy::DangerFullAccess,
             SandboxPermissions::UseDefault,
+            &SecurityPolicy::default(),
         )
         .await;
 
@@ -496,6 +525,7 @@ prefix_rule(pattern=["rm"], decision="forbidden")
             AskForApproval::UnlessTrusted,
             &SandboxPolicy::ReadOnly,
             SandboxPermissions::UseDefault,
+            &SecurityPolicy::default(),
         )
         .await;
 
@@ -530,6 +560,7 @@ prefix_rule(pattern=["rm"], decision="forbidden")
                 AskForApproval::UnlessTrusted,
                 &SandboxPolicy::DangerFullAccess,
                 SandboxPermissions::UseDefault,
+                &SecurityPolicy::default(),
             )
             .await,
             ExecApprovalRequirement::NeedsApproval {
@@ -601,6 +632,7 @@ prefix_rule(pattern=["rm"], decision="forbidden")
             AskForApproval::UnlessTrusted,
             &SandboxPolicy::ReadOnly,
             SandboxPermissions::UseDefault,
+            &SecurityPolicy::default(),
         )
         .await;
 
@@ -627,6 +659,7 @@ prefix_rule(pattern=["rm"], decision="forbidden")
             AskForApproval::UnlessTrusted,
             &SandboxPolicy::ReadOnly,
             SandboxPermissions::UseDefault,
+            &SecurityPolicy::default(),
         )
         .await;
 
@@ -656,6 +689,7 @@ prefix_rule(pattern=["rm"], decision="forbidden")
             AskForApproval::OnRequest,
             &SandboxPolicy::DangerFullAccess,
             SandboxPermissions::UseDefault,
+            &SecurityPolicy::default(),
         )
         .await;
 
@@ -682,6 +716,7 @@ prefix_rule(pattern=["rm"], decision="forbidden")
             AskForApproval::UnlessTrusted,
             &SandboxPolicy::ReadOnly,
             SandboxPermissions::UseDefault,
+            &SecurityPolicy::default(),
         )
         .await;
 
@@ -720,6 +755,7 @@ prefix_rule(pattern=["rm"], decision="forbidden")
                 AskForApproval::UnlessTrusted,
                 &SandboxPolicy::ReadOnly,
                 SandboxPermissions::UseDefault,
+                &SecurityPolicy::default(),
             )
             .await,
             ExecApprovalRequirement::NeedsApproval {
