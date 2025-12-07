@@ -14,6 +14,7 @@ Welcome to the Codex CLI project! This comprehensive guide will help you underst
 8. [Potential Gotchas](#8-potential-gotchas)
 9. [Documentation and Resources](#9-documentation-and-resources)
 10. [Onboarding Checklist](#10-onboarding-checklist)
+11. [Keeping Your Fork in Sync](#11-keeping-your-fork-in-sync)
 
 ---
 
@@ -636,6 +637,27 @@ Use this checklist to track your onboarding progress:
 - [ ] Shadow a PR review or code discussion
 
 ---
+
+## 11. Keeping Your Fork in Sync
+
+If you are working in a fork (for example, adding Gemini support or Klarna-specific
+integrations), read `safe_syncing.md` at the repo root before you start doing
+regular upstream syncs.
+
+That guide covers:
+
+- Which local commits we carry on top of upstream (with hashes and rationale).
+- The recommended branch layout (`main` mirroring `upstream/main`,
+  `allow_gemini` carrying fork-specific changes).
+- Exact `git` commands to:
+  - Fast-forward `main` from `upstream/main`.
+  - Safely rebase `allow_gemini` onto the updated `main`.
+  - Push with `--force-with-lease` without losing work.
+- When Codex CLI can safely auto-resolve merge conflicts and when it must stop
+  and ask a human for a decision.
+
+Before doing any non-trivial sync or rebasing work with Codex’s help, make sure
+you’ve read and understood `safe_syncing.md`.
 
 ## Quick Reference
 
