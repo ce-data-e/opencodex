@@ -137,6 +137,7 @@ pub enum ResponseItem {
     GhostSnapshot {
         ghost_commit: GhostCommit,
     },
+    #[serde(alias = "compaction")]
     CompactionSummary {
         encrypted_content: String,
     },
@@ -352,6 +353,9 @@ pub struct ShellCommandToolCallParams {
     pub command: String,
     pub workdir: Option<String>,
 
+    /// Whether to run the shell with login shell semantics
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub login: Option<bool>,
     /// This is the maximum time in milliseconds that the command is allowed to run.
     #[serde(alias = "timeout")]
     pub timeout_ms: Option<u64>,
@@ -542,6 +546,7 @@ mod tests {
     use anyhow::Result;
     use mcp_types::ImageContent;
     use mcp_types::TextContent;
+    use pretty_assertions::assert_eq;
     use tempfile::tempdir;
 
     #[test]
@@ -652,6 +657,21 @@ mod tests {
         let expected_content = serde_json::to_string(&expected_items)?;
         assert_eq!(payload.content, expected_content);
 
+        Ok(())
+    }
+
+    #[test]
+    fn deserializes_compaction_alias() -> Result<()> {
+        let json = r#"{"type":"compaction","encrypted_content":"abc"}"#;
+
+        let item: ResponseItem = serde_json::from_str(json)?;
+
+        assert_eq!(
+            item,
+            ResponseItem::CompactionSummary {
+                encrypted_content: "abc".into(),
+            }
+        );
         Ok(())
     }
 

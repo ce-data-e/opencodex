@@ -16,6 +16,7 @@ use codex_core::protocol::ReviewFinding;
 use codex_core::protocol::ReviewLineRange;
 use codex_core::protocol::ReviewOutputEvent;
 use codex_core::protocol::ReviewRequest;
+use codex_core::protocol::ReviewTarget;
 use codex_core::protocol::RolloutItem;
 use codex_core::protocol::RolloutLine;
 use codex_core::review_format::render_review_output_text;
@@ -81,8 +82,10 @@ async fn review_op_emits_lifecycle_and_review_output() {
     codex
         .submit(Op::Review {
             review_request: ReviewRequest {
-                prompt: "Please review my changes".to_string(),
-                user_facing_hint: "my changes".to_string(),
+                target: ReviewTarget::Custom {
+                    instructions: "Please review my changes".to_string(),
+                },
+                user_facing_hint: None,
             },
         })
         .await
@@ -199,8 +202,10 @@ async fn review_op_with_plain_text_emits_review_fallback() {
     codex
         .submit(Op::Review {
             review_request: ReviewRequest {
-                prompt: "Plain text review".to_string(),
-                user_facing_hint: "plain text review".to_string(),
+                target: ReviewTarget::Custom {
+                    instructions: "Plain text review".to_string(),
+                },
+                user_facing_hint: None,
             },
         })
         .await
@@ -257,8 +262,10 @@ async fn review_filters_agent_message_related_events() {
     codex
         .submit(Op::Review {
             review_request: ReviewRequest {
-                prompt: "Filter streaming events".to_string(),
-                user_facing_hint: "Filter streaming events".to_string(),
+                target: ReviewTarget::Custom {
+                    instructions: "Filter streaming events".to_string(),
+                },
+                user_facing_hint: None,
             },
         })
         .await
@@ -336,8 +343,10 @@ async fn review_does_not_emit_agent_message_on_structured_output() {
     codex
         .submit(Op::Review {
             review_request: ReviewRequest {
-                prompt: "check structured".to_string(),
-                user_facing_hint: "check structured".to_string(),
+                target: ReviewTarget::Custom {
+                    instructions: "check structured".to_string(),
+                },
+                user_facing_hint: None,
             },
         })
         .await
@@ -393,8 +402,10 @@ async fn review_uses_custom_review_model_from_config() {
     codex
         .submit(Op::Review {
             review_request: ReviewRequest {
-                prompt: "use custom model".to_string(),
-                user_facing_hint: "use custom model".to_string(),
+                target: ReviewTarget::Custom {
+                    instructions: "use custom model".to_string(),
+                },
+                user_facing_hint: None,
             },
         })
         .await
@@ -510,8 +521,10 @@ async fn review_input_isolated_from_parent_history() {
     codex
         .submit(Op::Review {
             review_request: ReviewRequest {
-                prompt: review_prompt.clone(),
-                user_facing_hint: review_prompt.clone(),
+                target: ReviewTarget::Custom {
+                    instructions: review_prompt.clone(),
+                },
+                user_facing_hint: None,
             },
         })
         .await
@@ -560,6 +573,10 @@ async fn review_input_isolated_from_parent_history() {
         review_prompt,
         "user message should only contain the raw review prompt"
     );
+    assert!(
+        env_text.contains("<sandbox_mode>read-only</sandbox_mode>"),
+        "review environment context must run with read-only sandbox"
+    );
 
     // Ensure the REVIEW_PROMPT rubric is sent via instructions.
     let instructions = body["instructions"].as_str().expect("instructions string");
@@ -599,11 +616,10 @@ async fn review_input_isolated_from_parent_history() {
     server.verify().await;
 }
 
-/// After a review thread finishes, its conversation should not leak into the
-/// parent session. A subsequent parent turn must not include any review
-/// messages in its request `input`.
+/// After a review thread finishes, its conversation should be visible in the
+/// parent session so later turns can reference the results.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn review_history_does_not_leak_into_parent_session() {
+async fn review_history_surfaces_in_parent_session() {
     skip_if_no_network!();
 
     // Respond to both the review request and the subsequent parent request.
@@ -622,8 +638,10 @@ async fn review_history_does_not_leak_into_parent_session() {
     codex
         .submit(Op::Review {
             review_request: ReviewRequest {
-                prompt: "Start a review".to_string(),
-                user_facing_hint: "Start a review".to_string(),
+                target: ReviewTarget::Custom {
+                    instructions: "Start a review".to_string(),
+                },
+                user_facing_hint: None,
             },
         })
         .await
@@ -666,20 +684,26 @@ async fn review_history_does_not_leak_into_parent_session() {
     let last_text = last["content"][0]["text"].as_str().unwrap();
     assert_eq!(last_text, followup);
 
-    // Ensure no review-thread content leaked into the parent request
-    let contains_review_prompt = input
-        .iter()
-        .any(|msg| msg["content"][0]["text"].as_str().unwrap_or_default() == "Start a review");
+    // Ensure review-thread content is present for downstream turns.
+    let contains_review_rollout_user = input.iter().any(|msg| {
+        msg["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("User initiated a review task.")
+    });
     let contains_review_assistant = input.iter().any(|msg| {
-        msg["content"][0]["text"].as_str().unwrap_or_default() == "review assistant output"
+        msg["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("review assistant output")
     });
     assert!(
-        !contains_review_prompt,
-        "review prompt leaked into parent turn input"
+        contains_review_rollout_user,
+        "review rollout user message missing from parent turn input"
     );
     assert!(
-        !contains_review_assistant,
-        "review assistant output leaked into parent turn input"
+        contains_review_assistant,
+        "review assistant output missing from parent turn input"
     );
 
     server.verify().await;

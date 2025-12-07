@@ -37,7 +37,7 @@ model_provider = "openai"
 # Reasoning & Verbosity (Responses API capable models)
 ################################################################################
 
-# Reasoning effort: minimal | low | medium | high (default: medium)
+# Reasoning effort: minimal | low | medium | high | xhigh (default: medium; xhigh only on gpt-5.1-codex-max)
 model_reasoning_effort = "medium"
 
 # Reasoning summary: auto | concise | detailed | none (default: auto)
@@ -124,7 +124,7 @@ experimental_use_profile = false
 [history]
 # save-all (default) | none
 persistence = "save-all"
-# Maximum bytes for history file (currently not enforced). Example: 5242880
+# Maximum bytes for history file; oldest entries are trimmed when exceeded. Example: 5242880
 # max_bytes = 0
 
 # URI scheme for clickable citations: vscode (default) | vscode-insiders | windsurf | cursor | none
@@ -226,12 +226,6 @@ enable_experimental_windows_sandbox = false
 # Experimental toggles (legacy; prefer [features])
 ################################################################################
 
-# Use experimental unified exec tool. Default: false
-experimental_use_unified_exec_tool = false
-
-# Use experimental Rust MCP client (enables OAuth for HTTP MCP). Default: false
-experimental_use_rmcp_client = false
-
 # Include apply_patch via freeform editing path (affects default tool set). Default: false
 experimental_use_freeform_apply_patch = false
 
@@ -319,8 +313,6 @@ experimental_use_freeform_apply_patch = false
 # chatgpt_base_url = "https://chatgpt.com/backend-api/"
 # experimental_compact_prompt_file = "compact_prompt.txt"
 # include_apply_patch_tool = false
-# experimental_use_unified_exec_tool = false
-# experimental_use_rmcp_client = false
 # experimental_use_freeform_apply_patch = false
 # experimental_sandbox_command_assessment = false
 # tools_web_search = false
