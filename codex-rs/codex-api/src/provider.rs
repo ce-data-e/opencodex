@@ -12,6 +12,7 @@ pub enum WireApi {
     Responses,
     Chat,
     Compact,
+    Gemini,
 }
 
 /// High-level retry configuration for a provider.
@@ -51,6 +52,8 @@ pub struct Provider {
     pub base_url: String,
     pub query_params: Option<HashMap<String, String>>,
     pub wire: WireApi,
+    /// Model name for providers that require the model in the URL path (e.g., Gemini).
+    pub model_name: Option<String>,
     pub headers: HeaderMap,
     pub retry: RetryConfig,
     pub stream_idle_timeout: Duration,
@@ -102,6 +105,28 @@ impl Provider {
 
         self.base_url.to_ascii_lowercase().contains("openai.azure.")
             || matches_azure_responses_base_url(&self.base_url)
+    }
+
+    /// Constructs the full URL for a Gemini generateContent request.
+    /// Returns `{base_url}/models/{model}:generateContent` with query params.
+    pub fn gemini_url_for_model(&self, model: &str) -> String {
+        let base = self.base_url.trim_end_matches('/');
+        let mut url = format!("{base}/models/{model}:generateContent");
+
+        // Add any configured query params
+        if let Some(params) = &self.query_params
+            && !params.is_empty()
+        {
+            let qs = params
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join("&");
+            url.push('?');
+            url.push_str(&qs);
+        }
+
+        url
     }
 }
 

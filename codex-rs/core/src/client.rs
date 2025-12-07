@@ -6,6 +6,7 @@ use codex_api::AggregateStreamExt;
 use codex_api::ChatClient as ApiChatClient;
 use codex_api::CompactClient as ApiCompactClient;
 use codex_api::CompactionInput as ApiCompactionInput;
+use codex_api::GeminiClient as ApiGeminiClient;
 use codex_api::Prompt as ApiPrompt;
 use codex_api::RequestTelemetry;
 use codex_api::ReqwestTransport;
@@ -116,8 +117,8 @@ impl ModelClient {
         &self.provider
     }
 
-    /// Streams a single model turn using either the Responses or Chat
-    /// Completions wire API, depending on the configured provider.
+    /// Streams a single model turn using either the Responses, Chat
+    /// Completions, or Gemini wire API, depending on the configured provider.
     ///
     /// For Chat providers, the underlying stream is optionally aggregated
     /// based on the `show_raw_agent_reasoning` flag in the config.
@@ -139,6 +140,7 @@ impl ModelClient {
                     ))
                 }
             }
+            WireApi::Gemini => self.stream_gemini_api(prompt).await,
         }
     }
 
@@ -184,6 +186,64 @@ impl ModelClient {
 
             match stream_result {
                 Ok(stream) => return Ok(stream),
+                Err(ApiError::Transport(TransportError::Http { status, .. }))
+                    if status == StatusCode::UNAUTHORIZED =>
+                {
+                    handle_unauthorized(status, &mut refreshed, &auth_manager, &auth).await?;
+                    continue;
+                }
+                Err(err) => return Err(map_api_error(err)),
+            }
+        }
+    }
+
+    /// Streams a turn via the Google Gemini API.
+    ///
+    /// This path is used when the provider is configured with `WireApi::Gemini`.
+    /// It converts the Codex internal format to Gemini's contents[] format.
+    async fn stream_gemini_api(&self, prompt: &Prompt) -> Result<ResponseStream> {
+        if prompt.output_schema.is_some() {
+            return Err(CodexErr::UnsupportedOperation(
+                "output_schema is not supported for Gemini API".to_string(),
+            ));
+        }
+
+        let auth_manager = self.auth_manager.clone();
+        let model_family = self.get_model_family();
+        let instructions = prompt
+            .get_full_instructions(&model_family)
+            .into_owned();
+        // Use the responses API tool format - GeminiRequestBuilder will convert to Gemini format
+        let tools_json = create_tools_json_for_responses_api(&prompt.tools)?;
+        let api_prompt = build_api_prompt(prompt, instructions, tools_json);
+        let conversation_id = self.conversation_id.to_string();
+        let session_source = self.session_source.clone();
+
+        let mut refreshed = false;
+        loop {
+            let auth = auth_manager.as_ref().and_then(|m| m.auth());
+            let api_provider = self
+                .provider
+                .to_api_provider(auth.as_ref().map(|a| a.mode))?;
+            let api_auth = auth_provider_from_auth(auth.clone(), &self.provider).await?;
+            let transport = ReqwestTransport::new(build_reqwest_client());
+            let (request_telemetry, sse_telemetry) = self.build_streaming_telemetry();
+            let client = ApiGeminiClient::new(transport, api_provider, api_auth)
+                .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
+
+            let stream_result = client
+                .stream_prompt(
+                    &self.config.model,
+                    &api_prompt,
+                    Some(conversation_id.clone()),
+                    Some(session_source.clone()),
+                )
+                .await;
+
+            match stream_result {
+                Ok(stream) => {
+                    return Ok(map_response_stream(stream, self.otel_event_manager.clone()));
+                }
                 Err(ApiError::Transport(TransportError::Http { status, .. }))
                     if status == StatusCode::UNAUTHORIZED =>
                 {

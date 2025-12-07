@@ -45,6 +45,8 @@ pub async fn process_chat_sse<S>(
         id: Option<String>,
         name: Option<String>,
         arguments: String,
+        /// Thought signature for Gemini thinking mode - must be echoed back
+        thought_signature: Option<String>,
     }
 
     let mut tool_calls: HashMap<usize, ToolCallState> = HashMap::new();
@@ -203,6 +205,24 @@ pub async fn process_chat_sse<S>(
                             }
                         }
 
+                        // Capture thought_signature for Gemini thinking mode.
+                        // Gemini 3 Pro exposes this under:
+                        //   • tool_call.thought_signature (legacy)
+                        //   • tool_call.extra_content.google.thought_signature (current)
+                        if let Some(sig) = tool_call
+                            .get("thought_signature")
+                            .and_then(|s| s.as_str())
+                            .or_else(|| {
+                                tool_call
+                                    .get("extra_content")
+                                    .and_then(|extra| extra.get("google"))
+                                    .and_then(|google| google.get("thought_signature"))
+                                    .and_then(|s| s.as_str())
+                            })
+                        {
+                            call_state.thought_signature = Some(sig.to_string());
+                        }
+
                         last_tool_call_index = Some(index);
                     }
                 }
@@ -266,6 +286,7 @@ pub async fn process_chat_sse<S>(
                         id,
                         name,
                         arguments,
+                        thought_signature,
                     } = state;
                     let Some(name) = name else {
                         debug!("Skipping tool call at index {index} because name is missing");
@@ -276,6 +297,7 @@ pub async fn process_chat_sse<S>(
                         name,
                         arguments,
                         call_id: id.unwrap_or_else(|| format!("tool-call-{index}")),
+                        thought_signature,
                     };
                     let _ = tx_event.send(Ok(ResponseEvent::OutputItemDone(item))).await;
                 }

@@ -261,6 +261,22 @@ pub fn find_family_for_model(slug: &str) -> ModelFamily {
             support_verbosity: true,
             truncation_policy: TruncationPolicy::Bytes(10_000),
         )
+    } else if slug.starts_with("gemini-") || slug.starts_with("google/gemini-") {
+        // Treat Gemini models as first-class coding agents using the same
+        // Codex-optimized instructions and tool configuration as gpt-5.1-codex.
+        // This enables long-running, tool-heavy workflows (shell/apply_patch)
+        // instead of simple Q&A-only behavior.
+        model_family!(
+            slug, slug,
+            supports_reasoning_summaries: true,
+            reasoning_summary_format: ReasoningSummaryFormat::Experimental,
+            base_instructions: GPT_5_CODEX_INSTRUCTIONS.to_string(),
+            apply_patch_tool_type: Some(ApplyPatchToolType::Freeform),
+            shell_type: ConfigShellToolType::ShellCommand,
+            supports_parallel_tool_calls: true,
+            support_verbosity: false,
+            truncation_policy: TruncationPolicy::Tokens(10_000),
+        )
     } else {
         derive_default_model_family(slug)
     }
@@ -291,6 +307,7 @@ mod tests {
     use super::*;
     use codex_protocol::openai_models::ClientVersion;
     use codex_protocol::openai_models::ModelVisibility;
+    use pretty_assertions::assert_eq;
 
     fn remote(slug: &str, effort: ReasoningEffort, shell: ConfigShellToolType) -> ModelInfo {
         ModelInfo {
@@ -305,6 +322,28 @@ mod tests {
             supported_in_api: true,
             priority: 1,
         }
+    }
+
+    #[test]
+    fn gemini_models_use_codex_instructions_and_shell_tools() {
+        let mf = find_family_for_model("gemini-3-pro-preview");
+        assert_eq!(mf.slug, "gemini-3-pro-preview");
+        assert!(mf.supports_reasoning_summaries);
+        assert_eq!(
+            mf.reasoning_summary_format,
+            ReasoningSummaryFormat::Experimental
+        );
+        assert_eq!(mf.apply_patch_tool_type, Some(ApplyPatchToolType::Freeform));
+        assert_eq!(mf.shell_type, ConfigShellToolType::ShellCommand);
+        assert!(mf.supports_parallel_tool_calls);
+    }
+
+    #[test]
+    fn google_prefixed_gemini_models_also_work() {
+        let mf = find_family_for_model("google/gemini-3-pro-preview");
+        assert_eq!(mf.slug, "google/gemini-3-pro-preview");
+        assert!(mf.supports_parallel_tool_calls);
+        assert_eq!(mf.shell_type, ConfigShellToolType::ShellCommand);
     }
 
     #[test]

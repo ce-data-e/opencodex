@@ -202,19 +202,42 @@ impl<'a> ChatRequestBuilder<'a> {
                     name,
                     arguments,
                     call_id,
+                    thought_signature,
                     ..
                 } => {
+                    let mut tool_call = json!({
+                        "id": call_id,
+                        "type": "function",
+                        "function": {
+                            "name": name,
+                            "arguments": arguments,
+                        }
+                    });
+                    // Include thought_signature for Gemini thinking mode.
+                    // For Gemini 3 Pro Chat Completions compatibility this must be nested under:
+                    //   tool_calls[].extra_content.google.thought_signature
+                    // We also keep the legacy top-level field for backwards compatibility.
+                    if let Some(sig) = thought_signature
+                        && let Some(obj) = tool_call.as_object_mut()
+                    {
+                        obj.insert("thought_signature".to_string(), json!(sig));
+
+                        let extra = obj
+                            .entry("extra_content".to_string())
+                            .or_insert_with(|| json!({}));
+                        if let Some(extra_obj) = extra.as_object_mut() {
+                            let google = extra_obj
+                                .entry("google".to_string())
+                                .or_insert_with(|| json!({}));
+                            if let Some(google_obj) = google.as_object_mut() {
+                                google_obj.insert("thought_signature".to_string(), json!(sig));
+                            }
+                        }
+                    }
                     let mut msg = json!({
                         "role": "assistant",
                         "content": null,
-                        "tool_calls": [{
-                            "id": call_id,
-                            "type": "function",
-                            "function": {
-                                "name": name,
-                                "arguments": arguments,
-                            }
-                        }]
+                        "tool_calls": [tool_call]
                     });
                     if let Some(reasoning) = reasoning_by_anchor_index.get(&idx)
                         && let Some(obj) = msg.as_object_mut()
@@ -345,6 +368,7 @@ mod tests {
             base_url: "https://api.openai.com/v1".to_string(),
             query_params: None,
             wire: WireApi::Chat,
+            model_name: None,
             headers: HeaderMap::new(),
             retry: RetryConfig {
                 max_attempts: 1,
