@@ -24,7 +24,6 @@ use image::ImageBuffer;
 use image::Rgba;
 use image::load_from_memory;
 use serde_json::Value;
-use wiremock::matchers::body_string_contains;
 
 fn find_image_message(body: &Value) -> Option<&Value> {
     body.get("input")
@@ -162,13 +161,9 @@ async fn view_image_tool_attaches_local_image() -> anyhow::Result<()> {
         ev_completed("resp-2"),
     ]);
 
-    // Use content-based matchers to distinguish requests:
-    // - First request: initial user message (no function_call_output)
-    // - Second request: contains function_call_output from the view_image tool
-    responses::mount_sse_once(&server, first_response).await;
-    let mock =
-        responses::mount_sse_once_match(&server, body_string_contains(call_id), second_response)
-            .await;
+    // Use mount_sse_sequence to serve responses in order (request 0 → first, request 1 → second).
+    // This avoids wiremock's LIFO ordering issues with multiple mocks.
+    let mock = responses::mount_sse_sequence(&server, vec![first_response, second_response]).await;
 
     let session_model = session_configured.model.clone();
 
@@ -205,8 +200,10 @@ async fn view_image_tool_attaches_local_image() -> anyhow::Result<()> {
     assert_eq!(tool_event.call_id, call_id);
     assert_eq!(tool_event.path, abs_path);
 
-    // The second mock only captures requests with the call_id (function_call_output)
-    let req = mock.single_request();
+    // The sequence mock captures all requests; the second one has the function_call_output
+    let requests = mock.requests();
+    assert_eq!(requests.len(), 2, "expected 2 requests for tool call flow");
+    let req = &requests[1];
     let body = req.body_json();
     let output_text = req
         .function_call_output_content_and_success(call_id)
@@ -279,11 +276,8 @@ async fn view_image_tool_errors_when_path_is_directory() -> anyhow::Result<()> {
         ev_completed("resp-2"),
     ]);
 
-    // Use content-based matcher to capture only the second request
-    responses::mount_sse_once(&server, first_response).await;
-    let mock =
-        responses::mount_sse_once_match(&server, body_string_contains(call_id), second_response)
-            .await;
+    // Use mount_sse_sequence to serve responses in order
+    let mock = responses::mount_sse_sequence(&server, vec![first_response, second_response]).await;
 
     let session_model = session_configured.model.clone();
 
@@ -304,7 +298,9 @@ async fn view_image_tool_errors_when_path_is_directory() -> anyhow::Result<()> {
 
     wait_for_event(&codex, |event| matches!(event, EventMsg::TaskComplete(_))).await;
 
-    let req = mock.single_request();
+    let requests = mock.requests();
+    assert_eq!(requests.len(), 2, "expected 2 requests for tool call flow");
+    let req = &requests[1];
     let body_with_tool_output = req.body_json();
     let output_text = req
         .function_call_output_content_and_success(call_id)
@@ -355,11 +351,8 @@ async fn view_image_tool_placeholder_for_non_image_files() -> anyhow::Result<()>
         ev_completed("resp-2"),
     ]);
 
-    // Use content-based matcher to capture only the second request
-    responses::mount_sse_once(&server, first_response).await;
-    let mock =
-        responses::mount_sse_once_match(&server, body_string_contains(call_id), second_response)
-            .await;
+    // Use mount_sse_sequence to serve responses in order
+    let mock = responses::mount_sse_sequence(&server, vec![first_response, second_response]).await;
 
     let session_model = session_configured.model.clone();
 
@@ -380,7 +373,9 @@ async fn view_image_tool_placeholder_for_non_image_files() -> anyhow::Result<()>
 
     wait_for_event(&codex, |event| matches!(event, EventMsg::TaskComplete(_))).await;
 
-    let request = mock.single_request();
+    let requests = mock.requests();
+    assert_eq!(requests.len(), 2, "expected 2 requests for tool call flow");
+    let request = &requests[1];
     assert!(
         request.inputs_of_type("input_image").is_empty(),
         "non-image file should not produce an input_image message"
@@ -449,11 +444,8 @@ async fn view_image_tool_errors_when_file_missing() -> anyhow::Result<()> {
         ev_completed("resp-2"),
     ]);
 
-    // Use content-based matcher to capture only the second request
-    responses::mount_sse_once(&server, first_response).await;
-    let mock =
-        responses::mount_sse_once_match(&server, body_string_contains(call_id), second_response)
-            .await;
+    // Use mount_sse_sequence to serve responses in order
+    let mock = responses::mount_sse_sequence(&server, vec![first_response, second_response]).await;
 
     let session_model = session_configured.model.clone();
 
@@ -474,7 +466,9 @@ async fn view_image_tool_errors_when_file_missing() -> anyhow::Result<()> {
 
     wait_for_event(&codex, |event| matches!(event, EventMsg::TaskComplete(_))).await;
 
-    let req = mock.single_request();
+    let requests = mock.requests();
+    assert_eq!(requests.len(), 2, "expected 2 requests for tool call flow");
+    let req = &requests[1];
     let body_with_tool_output = req.body_json();
     let output_text = req
         .function_call_output_content_and_success(call_id)
