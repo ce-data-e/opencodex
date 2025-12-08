@@ -110,12 +110,29 @@ async fn login_and_cancel_chatgpt() -> Result<()> {
             login_id: login.login_id,
         })
         .await?;
-    let cancel_resp: JSONRPCResponse = timeout(
+
+    // The cancel request may either succeed or return an error if the login
+    // was already cleaned up due to a race condition. Both outcomes are valid.
+    let cancel_result = timeout(
         DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(cancel_id)),
+        mcp.read_stream_until_response_or_error_message(RequestId::Integer(cancel_id)),
     )
     .await??;
-    let _ok: CancelLoginChatGptResponse = to_response(cancel_resp)?;
+
+    match cancel_result {
+        Ok(cancel_resp) => {
+            let _ok: CancelLoginChatGptResponse = to_response(cancel_resp)?;
+        }
+        Err(err) => {
+            // Accept "login id not found" error - this happens when the login
+            // was already cleaned up before the cancel request was processed.
+            assert!(
+                err.error.message.contains("login id not found"),
+                "unexpected error: {}",
+                err.error.message
+            );
+        }
+    }
 
     // Optionally observe the completion notification; do not fail if it races.
     let maybe_note = timeout(

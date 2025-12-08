@@ -210,9 +210,7 @@ impl ModelClient {
 
         let auth_manager = self.auth_manager.clone();
         let model_family = self.get_model_family();
-        let instructions = prompt
-            .get_full_instructions(&model_family)
-            .into_owned();
+        let instructions = prompt.get_full_instructions(&model_family).into_owned();
         // Use the responses API tool format - GeminiRequestBuilder will convert to Gemini format
         let tools_json = create_tools_json_for_responses_api(&prompt.tools)?;
         let api_prompt = build_api_prompt(prompt, instructions, tools_json);

@@ -6,6 +6,9 @@ on:
 
 jobs:
   build-test:
+    # Only run on the upstream repository - this job requires release artifacts
+    # that are only available in the openai/codex repository.
+    if: github.repository == 'openai/codex'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

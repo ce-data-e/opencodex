@@ -72,6 +72,7 @@ pub mod project_doc;
 mod rollout;
 pub(crate) mod safety;
 pub mod seatbelt;
+pub mod security_deny_list;
 pub mod shell;
 pub mod skills;
 pub mod spawn;
@@ -103,6 +104,8 @@ pub use exec_policy::ExecPolicyError;
 pub use exec_policy::load_exec_policy;
 pub use safety::get_platform_sandbox;
 pub use safety::set_windows_sandbox_enabled;
+pub use security_deny_list::DenyListCheckResult;
+pub use security_deny_list::check_command_against_deny_list;
 // Re-export the protocol types from the standalone `codex-protocol` crate so existing
 // `codex_core::protocol::...` references continue to work across the workspace.
 pub use codex_protocol::protocol;

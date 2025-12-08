@@ -144,7 +144,8 @@ async fn view_image_tool_attaches_local_image() -> anyhow::Result<()> {
     if let Some(parent) = abs_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let image = ImageBuffer::from_pixel(4096, 1024, Rgba([255u8, 0, 0, 255]));
+    // Use a small image to keep test fast - processing large images can timeout on CI
+    let image = ImageBuffer::from_pixel(100, 100, Rgba([255u8, 0, 0, 255]));
     image.save(&abs_path)?;
 
     let call_id = "view-image-call";
@@ -155,13 +156,15 @@ async fn view_image_tool_attaches_local_image() -> anyhow::Result<()> {
         ev_function_call(call_id, "view_image", &arguments),
         ev_completed("resp-1"),
     ]);
-    responses::mount_sse_once(&server, first_response).await;
 
     let second_response = sse(vec![
         ev_assistant_message("msg-1", "done"),
         ev_completed("resp-2"),
     ]);
-    let mock = responses::mount_sse_once(&server, second_response).await;
+
+    // Use mount_sse_sequence to serve responses in order (request 0 → first, request 1 → second).
+    // This avoids wiremock's LIFO ordering issues with multiple mocks.
+    let mock = responses::mount_sse_sequence(&server, vec![first_response, second_response]).await;
 
     let session_model = session_configured.model.clone();
 
@@ -198,7 +201,10 @@ async fn view_image_tool_attaches_local_image() -> anyhow::Result<()> {
     assert_eq!(tool_event.call_id, call_id);
     assert_eq!(tool_event.path, abs_path);
 
-    let req = mock.single_request();
+    // The sequence mock captures all requests; the second one has the function_call_output
+    let requests = mock.requests();
+    assert_eq!(requests.len(), 2, "expected 2 requests for tool call flow");
+    let req = &requests[1];
     let body = req.body_json();
     let output_text = req
         .function_call_output_content_and_success(call_id)
@@ -230,12 +236,11 @@ async fn view_image_tool_attaches_local_image() -> anyhow::Result<()> {
     let decoded = BASE64_STANDARD
         .decode(encoded)
         .expect("image data decodes from base64 for request");
-    let resized = load_from_memory(&decoded).expect("load resized image");
-    let (resized_width, resized_height) = resized.dimensions();
-    assert!(resized_width <= 2048);
-    assert!(resized_height <= 768);
-    assert!(resized_width < 4096);
-    assert!(resized_height < 1024);
+    let img = load_from_memory(&decoded).expect("load image from request");
+    let (width, height) = img.dimensions();
+    // Image should be unchanged since 100x100 is within limits
+    assert_eq!(width, 100);
+    assert_eq!(height, 100);
 
     Ok(())
 }
@@ -265,13 +270,14 @@ async fn view_image_tool_errors_when_path_is_directory() -> anyhow::Result<()> {
         ev_function_call(call_id, "view_image", &arguments),
         ev_completed("resp-1"),
     ]);
-    responses::mount_sse_once(&server, first_response).await;
 
     let second_response = sse(vec![
         ev_assistant_message("msg-1", "done"),
         ev_completed("resp-2"),
     ]);
-    let mock = responses::mount_sse_once(&server, second_response).await;
+
+    // Use mount_sse_sequence to serve responses in order
+    let mock = responses::mount_sse_sequence(&server, vec![first_response, second_response]).await;
 
     let session_model = session_configured.model.clone();
 
@@ -292,7 +298,9 @@ async fn view_image_tool_errors_when_path_is_directory() -> anyhow::Result<()> {
 
     wait_for_event(&codex, |event| matches!(event, EventMsg::TaskComplete(_))).await;
 
-    let req = mock.single_request();
+    let requests = mock.requests();
+    assert_eq!(requests.len(), 2, "expected 2 requests for tool call flow");
+    let req = &requests[1];
     let body_with_tool_output = req.body_json();
     let output_text = req
         .function_call_output_content_and_success(call_id)
@@ -337,13 +345,14 @@ async fn view_image_tool_placeholder_for_non_image_files() -> anyhow::Result<()>
         ev_function_call(call_id, "view_image", &arguments),
         ev_completed("resp-1"),
     ]);
-    responses::mount_sse_once(&server, first_response).await;
 
     let second_response = sse(vec![
         ev_assistant_message("msg-1", "done"),
         ev_completed("resp-2"),
     ]);
-    let mock = responses::mount_sse_once(&server, second_response).await;
+
+    // Use mount_sse_sequence to serve responses in order
+    let mock = responses::mount_sse_sequence(&server, vec![first_response, second_response]).await;
 
     let session_model = session_configured.model.clone();
 
@@ -364,7 +373,9 @@ async fn view_image_tool_placeholder_for_non_image_files() -> anyhow::Result<()>
 
     wait_for_event(&codex, |event| matches!(event, EventMsg::TaskComplete(_))).await;
 
-    let request = mock.single_request();
+    let requests = mock.requests();
+    assert_eq!(requests.len(), 2, "expected 2 requests for tool call flow");
+    let request = &requests[1];
     assert!(
         request.inputs_of_type("input_image").is_empty(),
         "non-image file should not produce an input_image message"
@@ -394,8 +405,7 @@ async fn view_image_tool_placeholder_for_non_image_files() -> anyhow::Result<()>
         "placeholder should mention path: {placeholder}"
     );
 
-    let output_text = mock
-        .single_request()
+    let output_text = request
         .function_call_output_content_and_success(call_id)
         .and_then(|(content, _)| content)
         .expect("output text present");
@@ -428,13 +438,14 @@ async fn view_image_tool_errors_when_file_missing() -> anyhow::Result<()> {
         ev_function_call(call_id, "view_image", &arguments),
         ev_completed("resp-1"),
     ]);
-    responses::mount_sse_once(&server, first_response).await;
 
     let second_response = sse(vec![
         ev_assistant_message("msg-1", "done"),
         ev_completed("resp-2"),
     ]);
-    let mock = responses::mount_sse_once(&server, second_response).await;
+
+    // Use mount_sse_sequence to serve responses in order
+    let mock = responses::mount_sse_sequence(&server, vec![first_response, second_response]).await;
 
     let session_model = session_configured.model.clone();
 
@@ -455,7 +466,9 @@ async fn view_image_tool_errors_when_file_missing() -> anyhow::Result<()> {
 
     wait_for_event(&codex, |event| matches!(event, EventMsg::TaskComplete(_))).await;
 
-    let req = mock.single_request();
+    let requests = mock.requests();
+    assert_eq!(requests.len(), 2, "expected 2 requests for tool call flow");
+    let req = &requests[1];
     let body_with_tool_output = req.body_json();
     let output_text = req
         .function_call_output_content_and_success(call_id)

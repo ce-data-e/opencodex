@@ -617,6 +617,38 @@ impl McpProcess {
         }
     }
 
+    /// Like `read_stream_until_response_message`, but also accepts an error response.
+    /// Returns `Ok(Ok(response))` on success, `Ok(Err(error))` on error response.
+    pub async fn read_stream_until_response_or_error_message(
+        &mut self,
+        request_id: RequestId,
+    ) -> anyhow::Result<Result<JSONRPCResponse, JSONRPCError>> {
+        eprintln!("in read_stream_until_response_or_error_message({request_id:?})");
+
+        loop {
+            let message = self.read_jsonrpc_message().await?;
+            match message {
+                JSONRPCMessage::Notification(notification) => {
+                    eprintln!("notification: {notification:?}");
+                    self.enqueue_user_message(notification);
+                }
+                JSONRPCMessage::Request(_) => {
+                    anyhow::bail!("unexpected JSONRPCMessage::Request: {message:?}");
+                }
+                JSONRPCMessage::Error(err) => {
+                    if err.id == request_id {
+                        return Ok(Err(err));
+                    }
+                }
+                JSONRPCMessage::Response(jsonrpc_response) => {
+                    if jsonrpc_response.id == request_id {
+                        return Ok(Ok(jsonrpc_response));
+                    }
+                }
+            }
+        }
+    }
+
     pub async fn read_stream_until_notification_message(
         &mut self,
         method: &str,

@@ -529,6 +529,81 @@ pub enum ReasoningSummaryFormat {
     Experimental,
 }
 
+/// TOML representation for SecurityPolicy.
+/// Commands matching `deny_commands` patterns will require approval even in YOLO mode.
+/// Commands matching `forbidden_commands` patterns are always blocked.
+#[derive(Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct SecurityPolicyToml {
+    /// List of regex patterns for commands requiring forced approval (even in YOLO mode).
+    pub deny_commands: Option<Vec<String>>,
+
+    /// List of regex patterns for always-forbidden commands.
+    pub forbidden_commands: Option<Vec<String>>,
+}
+
+/// Runtime security policy with pre-compiled regex patterns.
+/// This policy is checked before the normal approval policy and can force
+/// approval prompts or block commands regardless of the `--yolo` flag.
+#[derive(Debug, Clone, Default)]
+pub struct SecurityPolicy {
+    /// Commands matching these patterns will require approval even in YOLO mode.
+    pub deny_commands: Vec<regex::Regex>,
+
+    /// Commands matching these patterns are always forbidden.
+    pub forbidden_commands: Vec<regex::Regex>,
+}
+
+impl PartialEq for SecurityPolicy {
+    fn eq(&self, other: &Self) -> bool {
+        // Compare regex patterns by their string representation
+        let self_deny: Vec<_> = self
+            .deny_commands
+            .iter()
+            .map(regex::Regex::as_str)
+            .collect();
+        let other_deny: Vec<_> = other
+            .deny_commands
+            .iter()
+            .map(regex::Regex::as_str)
+            .collect();
+        let self_forbidden: Vec<_> = self
+            .forbidden_commands
+            .iter()
+            .map(regex::Regex::as_str)
+            .collect();
+        let other_forbidden: Vec<_> = other
+            .forbidden_commands
+            .iter()
+            .map(regex::Regex::as_str)
+            .collect();
+        self_deny == other_deny && self_forbidden == other_forbidden
+    }
+}
+
+impl From<SecurityPolicyToml> for SecurityPolicy {
+    fn from(toml: SecurityPolicyToml) -> Self {
+        let compile_patterns = |patterns: Option<Vec<String>>| -> Vec<regex::Regex> {
+            patterns
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|p| {
+                    regex::Regex::new(&p)
+                        .map_err(|e| {
+                            tracing::warn!("invalid security policy regex pattern '{}': {}", p, e);
+                            e
+                        })
+                        .ok()
+                })
+                .collect()
+        };
+
+        Self {
+            deny_commands: compile_patterns(toml.deny_commands),
+            forbidden_commands: compile_patterns(toml.forbidden_commands),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

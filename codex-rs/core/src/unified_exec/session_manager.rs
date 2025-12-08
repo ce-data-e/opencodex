@@ -580,6 +580,7 @@ impl UnifiedExecSessionManager {
             context.turn.approval_policy,
             &context.turn.sandbox_policy,
             SandboxPermissions::from(with_escalated_permissions.unwrap_or(false)),
+            &context.turn.security_policy,
         )
         .await;
         let req = UnifiedExecToolRequest::new(
