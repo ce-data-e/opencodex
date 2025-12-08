@@ -32,6 +32,7 @@ jobs:
         working-directory: codex-rs
     steps:
       - name: Free disk space
+        working-directory: /
         run: |
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /opt/ghc
