@@ -38,8 +38,7 @@ pub fn check_command_against_deny_list(
     security_policy: &SecurityPolicy,
 ) -> DenyListCheckResult {
     // Parse inner commands from shell wrappers like `bash -lc "cmd1 && cmd2"`
-    let commands =
-        parse_shell_lc_plain_commands(command).unwrap_or_else(|| vec![command.to_vec()]);
+    let commands = parse_shell_lc_plain_commands(command).unwrap_or_else(|| vec![command.to_vec()]);
 
     for cmd in &commands {
         let command_str = cmd.join(" ");
@@ -89,18 +88,15 @@ mod tests {
     #[test]
     fn test_allowed_command_passes() {
         let policy = make_policy(vec![r"rm\s+-rf"], vec![]);
-        let result =
-            check_command_against_deny_list(&["ls".into(), "-la".into()], &policy);
+        let result = check_command_against_deny_list(&["ls".into(), "-la".into()], &policy);
         assert_eq!(result, DenyListCheckResult::Allowed);
     }
 
     #[test]
     fn test_forbidden_command_detected() {
         let policy = make_policy(vec![], vec![r"rm\s+-rf\s+/"]);
-        let result = check_command_against_deny_list(
-            &["rm".into(), "-rf".into(), "/".into()],
-            &policy,
-        );
+        let result =
+            check_command_against_deny_list(&["rm".into(), "-rf".into(), "/".into()], &policy);
         assert!(matches!(result, DenyListCheckResult::Forbidden { .. }));
         if let DenyListCheckResult::Forbidden { matched_pattern } = result {
             assert_eq!(matched_pattern, r"rm\s+-rf\s+/");
@@ -114,7 +110,10 @@ mod tests {
             &["git".into(), "push".into(), "--force".into()],
             &policy,
         );
-        assert!(matches!(result, DenyListCheckResult::RequiresApproval { .. }));
+        assert!(matches!(
+            result,
+            DenyListCheckResult::RequiresApproval { .. }
+        ));
     }
 
     #[test]
@@ -136,7 +135,10 @@ mod tests {
             ],
             &policy,
         );
-        assert!(matches!(result, DenyListCheckResult::RequiresApproval { .. }));
+        assert!(matches!(
+            result,
+            DenyListCheckResult::RequiresApproval { .. }
+        ));
     }
 
     #[test]
@@ -151,16 +153,17 @@ mod tests {
             ],
             &policy,
         );
-        assert!(matches!(result, DenyListCheckResult::RequiresApproval { .. }));
+        assert!(matches!(
+            result,
+            DenyListCheckResult::RequiresApproval { .. }
+        ));
     }
 
     #[test]
     fn test_empty_policy_allows_all() {
         let policy = SecurityPolicy::default();
-        let result = check_command_against_deny_list(
-            &["rm".into(), "-rf".into(), "/".into()],
-            &policy,
-        );
+        let result =
+            check_command_against_deny_list(&["rm".into(), "-rf".into(), "/".into()], &policy);
         assert_eq!(result, DenyListCheckResult::Allowed);
     }
 
@@ -171,10 +174,16 @@ mod tests {
 
         // Should match
         let result = check_command_against_deny_list(&["git".into(), "push".into()], &policy);
-        assert!(matches!(result, DenyListCheckResult::RequiresApproval { .. }));
+        assert!(matches!(
+            result,
+            DenyListCheckResult::RequiresApproval { .. }
+        ));
 
         let result = check_command_against_deny_list(&["git".into(), "reset".into()], &policy);
-        assert!(matches!(result, DenyListCheckResult::RequiresApproval { .. }));
+        assert!(matches!(
+            result,
+            DenyListCheckResult::RequiresApproval { .. }
+        ));
 
         // Should not match
         let result = check_command_against_deny_list(&["git".into(), "status".into()], &policy);

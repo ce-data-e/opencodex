@@ -22,6 +22,7 @@ use tokio::time::timeout;
 use tracing::debug;
 use tracing::trace;
 
+#[allow(dead_code)]
 pub(crate) fn spawn_gemini_stream(
     stream_response: StreamResponse,
     idle_timeout: Duration,

@@ -101,11 +101,11 @@ pub use apply_patch::CODEX_APPLY_PATCH_ARG1;
 pub use command_safety::is_dangerous_command;
 pub use command_safety::is_safe_command;
 pub use exec_policy::ExecPolicyError;
-pub use security_deny_list::DenyListCheckResult;
-pub use security_deny_list::check_command_against_deny_list;
 pub use exec_policy::load_exec_policy;
 pub use safety::get_platform_sandbox;
 pub use safety::set_windows_sandbox_enabled;
+pub use security_deny_list::DenyListCheckResult;
+pub use security_deny_list::check_command_against_deny_list;
 // Re-export the protocol types from the standalone `codex-protocol` crate so existing
 // `codex_core::protocol::...` references continue to work across the workspace.
 pub use codex_protocol::protocol;

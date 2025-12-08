@@ -6,12 +6,12 @@ use std::sync::atomic::AtomicU64;
 
 use crate::AuthManager;
 use crate::SandboxState;
-use crate::config::types::SecurityPolicy;
 use crate::client_common::REVIEW_PROMPT;
 use crate::compact;
 use crate::compact::run_inline_auto_compact_task;
 use crate::compact::should_use_remote_compact_task;
 use crate::compact_remote::run_inline_remote_auto_compact_task;
+use crate::config::types::SecurityPolicy;
 use crate::exec_policy::load_exec_policy_for_features;
 use crate::features::Feature;
 use crate::features::Features;

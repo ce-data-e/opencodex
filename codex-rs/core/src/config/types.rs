@@ -556,8 +556,16 @@ pub struct SecurityPolicy {
 impl PartialEq for SecurityPolicy {
     fn eq(&self, other: &Self) -> bool {
         // Compare regex patterns by their string representation
-        let self_deny: Vec<_> = self.deny_commands.iter().map(regex::Regex::as_str).collect();
-        let other_deny: Vec<_> = other.deny_commands.iter().map(regex::Regex::as_str).collect();
+        let self_deny: Vec<_> = self
+            .deny_commands
+            .iter()
+            .map(regex::Regex::as_str)
+            .collect();
+        let other_deny: Vec<_> = other
+            .deny_commands
+            .iter()
+            .map(regex::Regex::as_str)
+            .collect();
         let self_forbidden: Vec<_> = self
             .forbidden_commands
             .iter()
